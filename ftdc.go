@@ -51,10 +51,25 @@ func (c *Chunk) Expand() []map[string]int64 {
 	return deltas
 }
 
-// Iterator returns an iterator that you can use to read documents for
-// each sample period in the chunk. Documents are returned in collection
+// FlatIterator returns an iterator that you can use to read documents for
+// each sample in the chunk. Documents are returned in collection
 // order, with keys flattened and dot-seperated fully qualified
 // paths.
+//
+// The documents are constructed from the metrics data lazily.
+func (c *Chunk) FlatIterator(ctx context.Context) Iterator {
+	sctx, cancel := context.WithCancel(ctx)
+	return &sampleIterator{
+		closer:   cancel,
+		stream:   c.streamFlattenedDocuments(sctx),
+		metadata: c.GetMetadata(),
+	}
+}
+
+// Iterator returns an iterator t hat you can use to read documents
+// for each sample in the chunk. Documents are returned in collection
+// order, and the documents maintain the structure from the source
+// document.
 //
 // The documents are constructed from the metrics data lazily.
 func (c *Chunk) Iterator(ctx context.Context) Iterator {
@@ -91,6 +106,8 @@ type Metric struct {
 	startingValue int64
 
 	originalType bson.Type
+	inArray      bool
+	inDocument   bool
 }
 
 func (m *Metric) Key() string {

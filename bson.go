@@ -23,7 +23,13 @@ func flattenDocument(path []string, d *bson.Document) []Metric {
 		val := e.Value()
 		key := e.Key()
 
-		o = append(o, metricForType(key, path, val)...)
+		metrics := metricForType(key, path, val)
+
+		for idx := range metrics {
+			metrics[idx].inArray = true
+		}
+
+		o = append(o, metrics...)
 	}
 
 	return o
@@ -66,6 +72,7 @@ func metricForType(key string, path []string, val *bson.Value) []Metric {
 				KeyName:       ne.KeyName,
 				startingValue: ne.startingValue,
 				originalType:  ne.originalType,
+				inDocument:    true,
 			})
 		}
 		return o
