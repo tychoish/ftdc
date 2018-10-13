@@ -15,31 +15,6 @@ type sampleIterator struct {
 	metadata *bson.Document
 }
 
-func (c *Chunk) streamFlattenedDocuments(ctx context.Context) <-chan *bson.Document {
-	out := make(chan *bson.Document)
-
-	go func() {
-		defer close(out)
-		for i := 0; i < c.nPoints; i++ {
-			doc := bson.NewDocument()
-
-			for _, m := range c.metrics {
-				doc.Append(bson.EC.Int64(m.Key(), m.Values[i]))
-			}
-
-			select {
-			case out <- doc:
-				continue
-			case <-ctx.Done():
-				return
-			}
-		}
-
-	}()
-
-	return out
-}
-
 func (c *Chunk) streamDocuments(ctx context.Context) <-chan *bson.Document {
 	out := make(chan *bson.Document)
 
@@ -49,12 +24,7 @@ func (c *Chunk) streamDocuments(ctx context.Context) <-chan *bson.Document {
 			doc := bson.NewDocument()
 
 			for _, m := range c.metrics {
-				if len(m.ParentPath) == 0 {
-
-					doc.Append(bson.EC.Int64(m.KeyName, m.Values[i]))
-				}
-				// TOOD:
-
+				doc.Append(bson.EC.Int64(m.Key(), m.Values[i]))
 			}
 
 			select {
