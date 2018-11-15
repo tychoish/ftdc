@@ -57,11 +57,10 @@ func readChunks(ctx context.Context, ch <-chan bson.Raw, o chan<- *Chunk) error 
 		if err != nil {
 			return errors.Wrap(err, "data is not populated")
 		}
-		_, zBytes := zelem.Binary()
 
 		// the metrics chunk, after the first 4 bytes, is zlib
 		// compressed, so we make a reader for that. data
-		z, err := zlib.NewReader(bytes.NewBuffer(zBytes[4:]))
+		z, err := zlib.NewReader(bytes.NewBuffer(zelem.Value[4:]))
 		if err != nil {
 			return errors.Wrap(err, "problem building zlib reader")
 		}

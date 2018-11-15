@@ -119,7 +119,9 @@ func TestReadPathIntegration(t *testing.T) {
 
 							numSamples++
 							if assert.NotNil(t, doc) {
-								assert.Equal(t, doc.Len(), test.expectedNum)
+								elems, err := doc.Elements()
+								require.NoError(t, err)
+								assert.Equal(t, len(elems), test.expectedNum)
 							}
 						}
 						assert.Equal(t, test.expectedMetrics, numSamples)
@@ -159,8 +161,9 @@ func TestReadPathIntegration(t *testing.T) {
 							})
 							startAt = time.Now()
 						}
-
-						require.Equal(t, test.docLen, doc.Len())
+						elems, err := doc.Elements()
+						require.NoError(t, err)
+						require.Equal(t, test.docLen, len(elems))
 					}
 					assert.NoError(t, iter.Err())
 					assert.Equal(t, expectedSamples, counter)
@@ -183,7 +186,9 @@ func TestReadPathIntegration(t *testing.T) {
 							startAt = time.Now()
 						}
 
-						require.Equal(t, test.expectedNum, doc.Len())
+						elems, err := doc.Elements()
+						require.NoError(t, err)
+						require.Equal(t, test.expectedNum, len(elems))
 					}
 					assert.NoError(t, iter.Err())
 					assert.Equal(t, expectedSamples, counter)
@@ -215,7 +220,7 @@ func TestRoundTrip(t *testing.T) {
 						collector.SetMetadata(createEventRecord(42, int64(time.Minute), rand.Int63n(7), 4))
 					})
 
-					var docs []*bson.Document
+					var docs []bson.Raw
 					for _, d := range test.docs {
 						assert.NoError(t, collector.Add(d))
 						docs = append(docs, d)
@@ -229,7 +234,7 @@ func TestRoundTrip(t *testing.T) {
 					for iter.Next() {
 						require.True(t, docNum < len(docs))
 						roundtripDoc := iter.Document()
-						assert.True(t, roundtripDoc.Equal(docs[docNum]))
+						assert.Equal(t, docs[docNum], roundtripDoc)
 						docNum++
 					}
 				})

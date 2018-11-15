@@ -1,5 +1,3 @@
-// +build none
-
 package ftdc
 
 import (
@@ -81,12 +79,8 @@ func CollectSysInfo(ctx context.Context, opts CollectSysInfoOptions) error {
 			if err != nil {
 				return errors.Wrap(err, "problem converting sysinfo to bson (reflect)")
 			}
-			doc, err := bson.ReadDocument(infobytes)
-			if err != nil {
-				return errors.Wrap(err, "problem converting sysinfo to bson (doc)")
-			}
 
-			if err = collector.Add(doc); err != nil {
+			if err = collector.Add(infobytes); err != nil {
 				return errors.Wrap(err, "problem collecting results")
 			}
 			collectCount++

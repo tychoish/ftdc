@@ -9,6 +9,7 @@ import (
 
 	"github.com/mongodb/grip"
 	"github.com/mongodb/mongo-go-driver/bson"
+	"github.com/mongodb/mongo-go-driver/bson/bsoncore"
 	"github.com/pkg/errors"
 )
 
@@ -26,13 +27,15 @@ type customTest struct {
 	skipBench bool
 }
 
-func createEventRecord(count, duration, size, workers int64) *bson.Document {
-	return bson.NewDocument(
-		bson.EC.Int64("count", count),
-		bson.EC.Int64("duration", duration),
-		bson.EC.Int64("size", size),
-		bson.EC.Int64("workers", workers),
-	)
+func createEventElems(count, duration, size, workers int64) []byte {
+	elems := bsoncore.AppendInt64Element([]byte{}, "count", count)
+	elems = bsoncore.AppendInt64Element(elems, "duration", duration)
+	elems = bsoncore.AppendInt64Element(elems, "size", size)
+	return bsoncore.AppendInt64Element(elems, "workers", workers)
+}
+
+func createEventRecord(count, duration, size, workers int64) bson.Raw {
+	return bsoncore.BuildDocument([]byte{}, createEventElems(count, duration, size, workers))
 }
 
 func randStr() string {
@@ -41,22 +44,22 @@ func randStr() string {
 	return hex.EncodeToString(b)
 }
 
-func randFlatDocument(numKeys int) *bson.Document {
-	doc := bson.NewDocument()
+func randFlatDocument(numKeys int) bson.Raw {
+	elems := []byte{}
+
 	for i := 0; i < numKeys; i++ {
-		doc.Append(bson.EC.Int64(fmt.Sprint(i), rand.Int63n(int64(numKeys)*1)))
+		elems = bsoncore.AppendInt64Element(elems, fmt.Sprint(i), rand.Int63n(int64(numKeys)*1))
 	}
 
-	return doc
+	return bsoncore.BuildDocument([]byte{}, elems)
 }
 
 func newChunk(num int64) []byte {
 	collector := NewBaseCollector(int(num) * 2)
 	for i := int64(0); i < num; i++ {
-		doc := createEventRecord(i, i+rand.Int63n(num-1), i+i*rand.Int63n(num-1), 1)
-		doc.Append(bson.EC.Time("time", time.Now().Add(time.Duration(i)*time.Hour)))
-		err := collector.Add(doc)
-		grip.EmergencyPanic(err)
+		elems := createEventElems(i, i+rand.Int63n(num-1), i+i*rand.Int63n(num-1), 1)
+		elems = bsoncore.AppendTimeElement(elems, "time", time.Now().Add(time.Duration(i)*time.Hour))
+		grip.EmergencyPanic(collector.Add(bsoncore.BuildDocument([]byte{}, elems)))
 	}
 
 	out, err := collector.Resolve()
@@ -68,18 +71,16 @@ func newChunk(num int64) []byte {
 func newMixedChunk(num int64) []byte {
 	collector := NewDynamicCollector(int(num) * 2)
 	for i := int64(0); i < num; i++ {
-		doc := createEventRecord(i, i+rand.Int63n(num-1), i+i*rand.Int63n(num-1), 1)
-		doc.Append(bson.EC.Time("time", time.Now().Add(time.Duration(i)*time.Hour)))
-		err := collector.Add(doc)
-		grip.EmergencyPanic(err)
+		elems := createEventElems(i, i+rand.Int63n(num-1), i+i*rand.Int63n(num-1), 1)
+		elems = bsoncore.AppendTimeElement(elems, "time", time.Now().Add(time.Duration(i)*time.Hour))
+		grip.EmergencyPanic(collector.Add(bsoncore.BuildDocument([]byte{}, elems)))
 	}
+
 	for i := int64(0); i < num; i++ {
-		doc := createEventRecord(i, i+rand.Int63n(num-1), i+i*rand.Int63n(num-1), 1)
-		doc.Append(
-			bson.EC.Time("time", time.Now().Add(time.Duration(i)*time.Hour)),
-			bson.EC.Int64("addition", i+i))
-		err := collector.Add(doc)
-		grip.EmergencyPanic(err)
+		elems := createEventElems(i, i+rand.Int63n(num-1), i+i*rand.Int63n(num-1), 1)
+		elems = bsoncore.AppendTimeElement(elems, "time", time.Now().Add(time.Duration(i)*time.Hour))
+		elems = bsoncore.AppendInt64Element(elems, "addition", i+1)
+		grip.EmergencyPanic(collector.Add(bsoncore.BuildDocument([]byte{}, elems)))
 	}
 
 	out, err := collector.Resolve()
@@ -89,39 +90,70 @@ func newMixedChunk(num int64) []byte {
 
 }
 
-func randFlatDocumentWithFloats(numKeys int) *bson.Document {
-	doc := bson.NewDocument()
+func randFlatDocumentWithFloats(numKeys int) bson.Raw {
+	elems := []byte{}
 	for i := 0; i < numKeys; i++ {
-		doc.Append(bson.EC.Double(fmt.Sprintf("%d_float", i), rand.Float64()))
-		doc.Append(bson.EC.Int64(fmt.Sprintf("%d_long", i), rand.Int63()))
+		elems = bsoncore.AppendDoubleElement(elems, fmt.Sprintf("%d_float", i), rand.Float64())
+		elems = bsoncore.AppendInt64Element(elems, fmt.Sprintf("%d_long", i), rand.Int63())
 	}
-	return doc
+
+	return bsoncore.BuildDocument([]byte{}, elems)
 }
 
-func randComplexDocument(numKeys, otherNum int) *bson.Document {
-	doc := bson.NewDocument()
+func randComplexDocument(numKeys, otherNum int) bson.Raw {
+	elems := []byte{}
 
 	for i := 0; i < numKeys; i++ {
-		doc.Append(bson.EC.Int64(fmt.Sprintln(numKeys, otherNum), rand.Int63n(int64(numKeys)*1)))
+		elems = bsoncore.AppendInt64Element(elems, fmt.Sprintln(numKeys, otherNum), rand.Int63n(int64(numKeys)*1))
 
 		if otherNum%5 == 0 {
-			ar := bson.NewArray()
+			ar := []byte{}
 			for ii := int64(0); i < otherNum; i++ {
-				ar.Append(bson.VC.Int64(rand.Int63n(1 + ii*int64(numKeys))))
+				ar = bsoncore.AppendInt64Element(ar, fmt.Sprint(ii), rand.Int63n(1+ii*int64(numKeys)))
 			}
-			doc.Append(bson.EC.Array(fmt.Sprintln("first", numKeys, otherNum), ar))
+			elems = bsoncore.AppendArrayElement(elems, "first", ar)
 		}
 
 		if otherNum%3 == 0 {
-			doc.Append(bson.EC.SubDocument(fmt.Sprintln("second", numKeys, otherNum), randFlatDocument(otherNum)))
+			elems = bsoncore.AppendDocumentElement(elems, fmt.Sprintln("second", numKeys, otherNum), randFlatDocument(otherNum))
 		}
 
 		if otherNum%12 == 0 {
-			doc.Append(bson.EC.SubDocument(fmt.Sprintln("third", numKeys, otherNum), randComplexDocument(otherNum, 10)))
+			elems = bsoncore.AppendDocumentElement(elems, fmt.Sprintln("third", numKeys, otherNum), randComplexDocument(otherNum, 10))
 		}
 	}
 
-	return doc
+	return bsoncore.BuildDocument([]byte{}, elems)
+}
+
+func testEncodingDocFromValue(in int64) bson.Raw {
+	elems := bsoncore.AppendInt64Element([]byte{}, "foo", in)
+	elems = bsoncore.AppendInt64Element(elems, "dup", 2*in)
+	elems = bsoncore.AppendInt64Element(elems, "dub", in)
+	elems = bsoncore.AppendInt64Element(elems, "neg", -1*in)
+
+	return bsoncore.BuildDocument([]byte{}, bsoncore.AppendInt64Element(elems, "mag", 10*in))
+}
+
+func testEncodingDocAlternateFromValue(in int64) bson.Raw {
+	elems := bsoncore.AppendInt64Element([]byte{}, "foo", in)
+	elems = bsoncore.AppendInt64Element(elems, "neg", -1*in)
+	elems = bsoncore.AppendInt64Element(elems, "dub", in)
+	elems = bsoncore.AppendInt64Element(elems, "dup", 2*in)
+
+	return bsoncore.BuildDocument([]byte{}, bsoncore.AppendInt64Element(elems, "mag", 10*in))
+}
+
+func testShortEncodingDocFromValue(in int64) bson.Raw {
+	elems := bsoncore.AppendInt64Element([]byte{}, "foo", in)
+	elems = bsoncore.AppendInt64Element(elems, "neg", -1*in)
+	return bsoncore.BuildDocument([]byte{}, bsoncore.AppendInt64Element(elems, "mag", 10*in))
+}
+
+func mockTwoElementDocument() bson.Raw {
+	elems := bsoncore.AppendInt64Element([]byte{}, "one", 43)
+	elems = bsoncore.AppendInt64Element(elems, "two", 5)
+	return bsoncore.BuildDocument([]byte{}, elems)
 }
 
 func createCollectors() []*customCollector {
@@ -207,22 +239,22 @@ func createTests() []customTest {
 	return []customTest{
 		{
 			name: "OneDocNoStats",
-			docs: []*bson.Document{
-				bson.NewDocument(bson.EC.String("foo", "bar")),
+			docs: []bson.Raw{
+				bsoncore.BuildDocument([]byte{}, bsoncore.AppendStringElement([]byte{}, "foo", "bar")),
 			},
 			skipBench: true,
 		},
 		{
 			name: "OneDocumentOneStat",
-			docs: []*bson.Document{
-				bson.NewDocument(bson.EC.Int32("foo", 42)),
+			docs: []bson.Raw{
+				bsoncore.BuildDocument([]byte{}, bsoncore.AppendInt64Element([]byte{}, "foo", 42)),
 			},
 			skipBench: true,
 			numStats:  1,
 		},
 		{
 			name: "OneSmallFlat",
-			docs: []*bson.Document{
+			docs: []bson.Raw{
 				randFlatDocument(12),
 			},
 			numStats:  12,
@@ -230,7 +262,7 @@ func createTests() []customTest {
 		},
 		{
 			name: "OneLargeFlat",
-			docs: []*bson.Document{
+			docs: []bson.Raw{
 				randFlatDocument(360),
 			},
 			numStats:  360,
@@ -238,7 +270,7 @@ func createTests() []customTest {
 		},
 		{
 			name: "OneHugeFlat",
-			docs: []*bson.Document{
+			docs: []bson.Raw{
 				randFlatDocument(36000),
 			},
 			numStats:  36000,
@@ -246,29 +278,30 @@ func createTests() []customTest {
 		},
 		{
 			name: "SeveralDocNoStats",
-			docs: []*bson.Document{
-				bson.NewDocument(bson.EC.String("foo", "bar")),
-				bson.NewDocument(bson.EC.String("foo", "bar")),
-				bson.NewDocument(bson.EC.String("foo", "bar")),
-				bson.NewDocument(bson.EC.String("foo", "bar")),
+			docs: []bson.Raw{
+				bsoncore.BuildDocument([]byte{}, bsoncore.AppendStringElement([]byte{}, "foo", "bar")),
+				bsoncore.BuildDocument([]byte{}, bsoncore.AppendStringElement([]byte{}, "foo", "bar")),
+				bsoncore.BuildDocument([]byte{}, bsoncore.AppendStringElement([]byte{}, "foo", "bar")),
+				bsoncore.BuildDocument([]byte{}, bsoncore.AppendStringElement([]byte{}, "foo", "bar")),
+				bsoncore.BuildDocument([]byte{}, bsoncore.AppendStringElement([]byte{}, "foo", "bar")),
 			},
 			skipBench: true,
 		},
 		{
 			name: "SeveralDocumentOneStat",
-			docs: []*bson.Document{
-				bson.NewDocument(bson.EC.Int32("foo", 42)),
-				bson.NewDocument(bson.EC.Int32("foo", 42)),
-				bson.NewDocument(bson.EC.Int32("foo", 42)),
-				bson.NewDocument(bson.EC.Int32("foo", 42)),
-				bson.NewDocument(bson.EC.Int32("foo", 42)),
+			docs: []bson.Raw{
+				bsoncore.BuildDocument([]byte{}, bsoncore.AppendInt64Element([]byte{}, "foo", 42)),
+				bsoncore.BuildDocument([]byte{}, bsoncore.AppendInt64Element([]byte{}, "foo", 42)),
+				bsoncore.BuildDocument([]byte{}, bsoncore.AppendInt64Element([]byte{}, "foo", 42)),
+				bsoncore.BuildDocument([]byte{}, bsoncore.AppendInt64Element([]byte{}, "foo", 42)),
+				bsoncore.BuildDocument([]byte{}, bsoncore.AppendInt64Element([]byte{}, "foo", 42)),
 			},
 			numStats:  1,
 			skipBench: true,
 		},
 		{
 			name: "SeveralSmallFlat",
-			docs: []*bson.Document{
+			docs: []bson.Raw{
 				randFlatDocument(10),
 				randFlatDocument(10),
 				randFlatDocument(10),
@@ -285,7 +318,7 @@ func createTests() []customTest {
 		},
 		{
 			name: "SeveralLargeFlat",
-			docs: []*bson.Document{
+			docs: []bson.Raw{
 				randFlatDocument(200),
 				randFlatDocument(200),
 				randFlatDocument(200),
@@ -302,7 +335,7 @@ func createTests() []customTest {
 		},
 		{
 			name: "SeveralHugeFlat",
-			docs: []*bson.Document{
+			docs: []bson.Raw{
 				randFlatDocument(2000),
 				randFlatDocument(2000),
 				randFlatDocument(2000),
@@ -314,7 +347,7 @@ func createTests() []customTest {
 		},
 		{
 			name: "OneSmallComplex",
-			docs: []*bson.Document{
+			docs: []bson.Raw{
 				randComplexDocument(4, 10),
 			},
 			randStats: true,
@@ -323,7 +356,7 @@ func createTests() []customTest {
 		},
 		{
 			name: "OneLargeComplex",
-			docs: []*bson.Document{
+			docs: []bson.Raw{
 				randComplexDocument(100, 100),
 			},
 			randStats: true,
@@ -332,7 +365,7 @@ func createTests() []customTest {
 		},
 		{
 			name: "SeveralSmallComplex",
-			docs: []*bson.Document{
+			docs: []bson.Raw{
 				randComplexDocument(4, 100),
 				randComplexDocument(4, 100),
 				randComplexDocument(4, 100),
@@ -349,7 +382,7 @@ func createTests() []customTest {
 		},
 		{
 			name: "OneHugeComplex",
-			docs: []*bson.Document{
+			docs: []bson.Raw{
 				randComplexDocument(10000, 10000),
 			},
 			randStats: true,
@@ -358,7 +391,7 @@ func createTests() []customTest {
 		},
 		{
 			name: "SeveralHugeComplex",
-			docs: []*bson.Document{
+			docs: []bson.Raw{
 				randComplexDocument(10000, 10000),
 				randComplexDocument(10000, 10000),
 				randComplexDocument(10000, 10000),
@@ -371,7 +404,7 @@ func createTests() []customTest {
 		},
 		{
 			name: "SingleFloats",
-			docs: []*bson.Document{
+			docs: []bson.Raw{
 				randFlatDocumentWithFloats(1),
 				randFlatDocumentWithFloats(1),
 			},
@@ -381,7 +414,7 @@ func createTests() []customTest {
 		},
 		{
 			name: "MultiFloats",
-			docs: []*bson.Document{
+			docs: []bson.Raw{
 				randFlatDocumentWithFloats(50),
 				randFlatDocumentWithFloats(50),
 			},
@@ -531,6 +564,14 @@ func createEncodingTests() []encodingTests {
 			dataset: []int64{rand.Int63n(100), -1 * rand.Int63n(100), rand.Int63n(100), -1 * rand.Int63n(100)},
 		},
 	}
+}
+
+func buildArray(dst []byte, elems ...[]byte) []byte {
+	out := []byte{}
+	for _, e := range elems {
+		out = append(out, e...)
+	}
+	return bsoncore.BuildDocument(dst, out)
 }
 
 type noopWriter struct {

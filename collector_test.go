@@ -11,6 +11,7 @@ import (
 
 	"github.com/mongodb/grip"
 	"github.com/mongodb/mongo-go-driver/bson"
+	"github.com/mongodb/mongo-go-driver/bson/bsoncore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -76,18 +77,18 @@ func TestCollectorInterface(t *testing.T) {
 				assert.Error(t, err)
 			})
 			t.Run("RoundTrip", func(t *testing.T) {
-				for name, docs := range map[string][]*bson.Document{
-					"Integers": []*bson.Document{
+				for name, docs := range map[string][]bson.Raw{
+					"Integers": []bson.Raw{
 						randFlatDocument(5),
 						randFlatDocument(5),
 						randFlatDocument(5),
 						randFlatDocument(5),
 					},
-					"DecendingHandIntegers": []*bson.Document{
-						bson.NewDocument(bson.EC.Int64("one", 43), bson.EC.Int64("two", 5)),
-						bson.NewDocument(bson.EC.Int64("one", 89), bson.EC.Int64("two", 4)),
-						bson.NewDocument(bson.EC.Int64("one", 99), bson.EC.Int64("two", 3)),
-						bson.NewDocument(bson.EC.Int64("one", 101), bson.EC.Int64("two", 2)),
+					"DecendingHandIntegers": []bson.Raw{
+						bsoncore.BuildDocument([]byte{}, bsoncore.AppendInt64Element(bsoncore.AppendInt64Element([]byte{}, "two", 5), "one", 43)),
+						bsoncore.BuildDocument([]byte{}, bsoncore.AppendInt64Element(bsoncore.AppendInt64Element([]byte{}, "two", 4), "one", 89)),
+						bsoncore.BuildDocument([]byte{}, bsoncore.AppendInt64Element(bsoncore.AppendInt64Element([]byte{}, "two", 3), "one", 99)),
+						bsoncore.BuildDocument([]byte{}, bsoncore.AppendInt64Element(bsoncore.AppendInt64Element([]byte{}, "two", 2), "one", 101)),
 					},
 				} {
 					t.Run(name, func(t *testing.T) {
@@ -111,7 +112,7 @@ func TestCollectorInterface(t *testing.T) {
 							t.Run(fmt.Sprintf("DocumentNumber_%d", idx), func(t *testing.T) {
 								s := iter.Document()
 
-								if !assert.True(t, s.Equal(docs[idx])) {
+								if !assert.Equal(t, s, docs[idx]) {
 									fmt.Println("---", idx)
 									fmt.Println("in: ", docs[idx])
 									fmt.Println("out:", s)
@@ -157,7 +158,7 @@ func TestStreamingEncoding(t *testing.T) {
 					t.Run("SingleValues", func(t *testing.T) {
 						collector, buf := impl.factory()
 						for _, val := range test.dataset {
-							assert.NoError(t, collector.Add(bson.NewDocument(bson.EC.Int64("foo", val))))
+							assert.NoError(t, collector.Add(bsoncore.BuildDocument([]byte{}, bsoncore.AppendInt64Element([]byte{}, "foo", val))))
 						}
 						require.NoError(t, FlushCollector(collector, buf))
 						payload := buf.Bytes()
@@ -182,16 +183,10 @@ func TestStreamingEncoding(t *testing.T) {
 					})
 					t.Run("MultipleValues", func(t *testing.T) {
 						collector, buf := impl.factory()
-						docs := []*bson.Document{}
+						docs := []bson.Raw{}
 
 						for _, val := range test.dataset {
-							doc := bson.NewDocument(
-								bson.EC.Int64("foo", val),
-								bson.EC.Int64("dub", 2*val),
-								bson.EC.Int64("dup", val),
-								bson.EC.Int64("neg", -1*val),
-								bson.EC.Int64("mag", 10*val),
-							)
+							doc := testEncodingDocFromValue(val)
 							docs = append(docs, doc)
 							assert.NoError(t, collector.Add(doc))
 						}
@@ -208,11 +203,7 @@ func TestStreamingEncoding(t *testing.T) {
 							res = append(res, val)
 							idx := len(res) - 1
 
-							if !doc.Equal(docs[idx]) {
-								grip.Infoln(idx, "src:", test.dataset[idx])
-								grip.Infoln(idx, "in: ", docs[idx].ToExtJSON(false))
-								grip.Infoln(idx, "out:", doc.ToExtJSON(false))
-							}
+							assert.Equal(t, doc, docs[idx])
 						}
 
 						require.NoError(t, iter.Err())
@@ -222,24 +213,14 @@ func TestStreamingEncoding(t *testing.T) {
 
 					t.Run("MultiValueKeyOrder", func(t *testing.T) {
 						collector, buf := impl.factory()
-						docs := []*bson.Document{}
+						docs := []bson.Raw{}
 
 						for idx, val := range test.dataset {
-							var doc *bson.Document
+							var doc bson.Raw
 							if len(test.dataset) >= 3 && (idx == 2 || idx == 3) {
-								doc = bson.NewDocument(
-									bson.EC.Int64("foo", val),
-									bson.EC.Int64("mag", 10*val),
-									bson.EC.Int64("neg", -1*val),
-								)
+								doc = testShortEncodingDocFromValue(val)
 							} else {
-								doc = bson.NewDocument(
-									bson.EC.Int64("foo", val),
-									bson.EC.Int64("dub", 2*val),
-									bson.EC.Int64("dup", val),
-									bson.EC.Int64("neg", -1*val),
-									bson.EC.Int64("mag", 10*val),
-								)
+								doc = testEncodingDocFromValue(val)
 							}
 
 							docs = append(docs, doc)
@@ -257,11 +238,7 @@ func TestStreamingEncoding(t *testing.T) {
 							res = append(res, val)
 							idx := len(res) - 1
 
-							if !doc.Equal(docs[idx]) {
-								grip.Infoln(idx, "src:", test.dataset[idx])
-								grip.Infoln(idx, "in: ", docs[idx].ToExtJSON(false))
-								grip.Infoln(idx, "out:", doc.ToExtJSON(false))
-							}
+							assert.Equal(t, doc, docs[idx])
 						}
 
 						require.NoError(t, iter.Err())
@@ -270,26 +247,14 @@ func TestStreamingEncoding(t *testing.T) {
 					})
 					t.Run("DifferentKeys", func(t *testing.T) {
 						collector, buf := impl.factory()
-						docs := []*bson.Document{}
+						docs := []bson.Raw{}
 
 						for idx, val := range test.dataset {
-							var doc *bson.Document
+							var doc bson.Raw
 							if len(test.dataset) >= 5 && (idx == 2 || idx == 3) {
-								doc = bson.NewDocument(
-									bson.EC.Int64("foo", val),
-									bson.EC.Int64("dub", 2*val),
-									bson.EC.Int64("dup", val),
-									bson.EC.Int64("neg", -1*val),
-									bson.EC.Int64("mag", 10*val),
-								)
+								doc = testEncodingDocAlternateFromValue(val)
 							} else {
-								doc = bson.NewDocument(
-									bson.EC.Int64("foo", val),
-									bson.EC.Int64("mag", 10*val),
-									bson.EC.Int64("neg", -1*val),
-									bson.EC.Int64("dup", val),
-									bson.EC.Int64("dub", 2*val),
-								)
+								doc = testEncodingDocFromValue(val)
 							}
 
 							docs = append(docs, doc)
@@ -307,12 +272,7 @@ func TestStreamingEncoding(t *testing.T) {
 							val := doc.Lookup("foo").Int64()
 							res = append(res, val)
 							idx := len(res) - 1
-
-							if !doc.Equal(docs[idx]) {
-								grip.Infoln(idx, "src:", test.dataset[idx])
-								grip.Infoln(idx, "in: ", docs[idx].ToExtJSON(false))
-								grip.Infoln(idx, "out:", doc.ToExtJSON(false))
-							}
+							assert.Equal(t, doc, docs[idx])
 						}
 						require.NoError(t, iter.Err())
 						require.Equal(t, len(test.dataset), len(res), "%v -> %v", test.dataset, res)
@@ -352,7 +312,7 @@ func TestFixedEncoding(t *testing.T) {
 					t.Run("SingleValues", func(t *testing.T) {
 						collector := impl.factory()
 						for _, val := range test.dataset {
-							assert.NoError(t, collector.Add(bson.NewDocument(bson.EC.Int64("foo", val))))
+							assert.NoError(t, collector.Add(bsoncore.BuildDocument([]byte{}, bsoncore.AppendInt64Element([]byte{}, "foo", val))))
 						}
 
 						payload, err := collector.Resolve()
@@ -377,16 +337,10 @@ func TestFixedEncoding(t *testing.T) {
 					})
 					t.Run("MultipleValues", func(t *testing.T) {
 						collector := impl.factory()
-						docs := []*bson.Document{}
+						docs := []bson.Raw{}
 
 						for _, val := range test.dataset {
-							doc := bson.NewDocument(
-								bson.EC.Int64("foo", val),
-								bson.EC.Int64("dub", 2*val),
-								bson.EC.Int64("dup", val),
-								bson.EC.Int64("neg", -1*val),
-								bson.EC.Int64("mag", 10*val),
-							)
+							doc := testEncodingDocFromValue(val)
 							docs = append(docs, doc)
 							assert.NoError(t, collector.Add(doc))
 						}
@@ -402,11 +356,7 @@ func TestFixedEncoding(t *testing.T) {
 							res = append(res, val)
 							idx := len(res) - 1
 
-							if !doc.Equal(docs[idx]) {
-								grip.Infoln(idx, "src:", test.dataset[idx])
-								grip.Infoln(idx, "in: ", docs[idx].ToExtJSON(false))
-								grip.Infoln(idx, "out:", doc.ToExtJSON(false))
-							}
+							assert.Equal(t, doc, docs[idx])
 						}
 
 						require.NoError(t, iter.Err())
@@ -417,13 +367,14 @@ func TestFixedEncoding(t *testing.T) {
 			}
 			t.Run("SizeMismatch", func(t *testing.T) {
 				collector := impl.factory()
-				assert.NoError(t, collector.Add(bson.NewDocument(bson.EC.Int64("one", 43), bson.EC.Int64("two", 5))))
-				assert.NoError(t, collector.Add(bson.NewDocument(bson.EC.Int64("one", 43), bson.EC.Int64("two", 5))))
+
+				assert.NoError(t, collector.Add(mockTwoElementDocument()))
+				assert.NoError(t, collector.Add(mockTwoElementDocument()))
 
 				if strings.Contains(impl.name, "Dynamic") {
-					assert.NoError(t, collector.Add(bson.NewDocument(bson.EC.Int64("one", 43))))
+					assert.NoError(t, collector.Add(bsoncore.BuildDocument([]byte{}, bsoncore.AppendInt64Element([]byte{}, "one", 43))))
 				} else {
-					assert.Error(t, collector.Add(bson.NewDocument(bson.EC.Int64("one", 43))))
+					assert.Error(t, collector.Add(bsoncore.BuildDocument([]byte{}, bsoncore.AppendInt64Element([]byte{}, "one", 43))))
 				}
 			})
 		})
@@ -442,9 +393,9 @@ func TestCollectorSizeCap(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			collector := test.factory()
-			assert.NoError(t, collector.Add(bson.NewDocument(bson.EC.Int64("one", 43), bson.EC.Int64("two", 5))))
-			assert.NoError(t, collector.Add(bson.NewDocument(bson.EC.Int64("one", 43), bson.EC.Int64("two", 5))))
-			assert.Error(t, collector.Add(bson.NewDocument(bson.EC.Int64("one", 43), bson.EC.Int64("two", 5))))
+			assert.NoError(t, collector.Add(mockTwoElementDocument()))
+			assert.NoError(t, collector.Add(mockTwoElementDocument()))
+			assert.NoError(t, collector.Add(mockTwoElementDocument()))
 		})
 	}
 }
@@ -458,9 +409,7 @@ func TestWriter(t *testing.T) {
 	})
 	t.Run("RealDocument", func(t *testing.T) {
 		collector := NewWriterCollector(2, &noopWriter{})
-		doc, err := bson.NewDocument(bson.EC.Int64("one", 43), bson.EC.Int64("two", 5)).MarshalBSON()
-		require.NoError(t, err)
-		_, err = collector.Write(doc)
+		_, err := collector.Write(mockTwoElementDocument())
 		assert.NoError(t, err)
 		assert.NoError(t, collector.Close())
 	})
@@ -470,9 +419,7 @@ func TestWriter(t *testing.T) {
 	})
 	t.Run("CloseError", func(t *testing.T) {
 		collector := NewWriterCollector(2, &errWriter{})
-		doc, err := bson.NewDocument(bson.EC.Int64("one", 43), bson.EC.Int64("two", 5)).MarshalBSON()
-		require.NoError(t, err)
-		_, err = collector.Write(doc)
+		_, err := collector.Write(mockTwoElementDocument())
 		require.NoError(t, err)
 		assert.Error(t, collector.Close())
 	})

@@ -1,5 +1,3 @@
-// +build none
-
 package ftdc
 
 import (
@@ -25,10 +23,12 @@ func NewWriterCollector(chunkSize int, writer io.WriteCloser) io.WriteCloser {
 }
 
 func (w *writerCollector) Write(in []byte) (int, error) {
-	doc, err := bson.ReadDocument(in)
-	if err != nil {
+	doc := bson.Raw(in)
+
+	if err := doc.Validate(); err != nil {
 		return 0, errors.Wrap(err, "problem reading bson document")
 	}
+
 	return len(in), errors.Wrap(w.collector.Add(doc), "problem adding document to collector")
 }
 

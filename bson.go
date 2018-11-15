@@ -39,7 +39,10 @@ func metricForType(key string, path []string, val bson.RawValue) []Metric {
 		return []Metric{}
 	case bson.TypeArray:
 		path = append(path, key)
-		out, _ := metricForDocument(path, val.Array()) // notlint
+		out, err := metricForDocument(path, val.Array()) // notlint
+		if err != nil {
+			panic(err)
+		}
 		return out
 	case bson.TypeEmbeddedDocument:
 		path = append(path, key)

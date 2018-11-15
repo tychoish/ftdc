@@ -1,5 +1,3 @@
-// +build none
-
 package ftdc
 
 import (
@@ -56,8 +54,8 @@ func (opts CollectJSONOptions) getSource() (<-chan bson.Raw, <-chan error) {
 			defer close(errs)
 
 			for stream.Scan() {
-				doc := bson.NewDocument()
-				err := bson.UnmarshalExtJSON(stream.Bytes(), false, doc)
+				doc := bson.Raw{}
+				err := bson.UnmarshalExtJSON(stream.Bytes(), false, &doc)
 				if err != nil {
 					errs <- err
 					return
@@ -77,8 +75,8 @@ func (opts CollectJSONOptions) getSource() (<-chan bson.Raw, <-chan error) {
 			stream := bufio.NewScanner(f)
 
 			for stream.Scan() {
-				doc := bson.NewDocument()
-				err := bson.UnmarshalExtJSON(stream.Bytes(), false, doc)
+				doc := bson.Raw{}
+				err := bson.UnmarshalExtJSON(stream.Bytes(), false, &doc)
 				if err != nil {
 					errs <- err
 					return
@@ -100,8 +98,8 @@ func (opts CollectJSONOptions) getSource() (<-chan bson.Raw, <-chan error) {
 			defer tail.Close()
 
 			for line := range tail.Lines() {
-				doc := bson.NewDocument()
-				err := bson.UnmarshalExtJSON([]byte(line.String()), false, doc)
+				doc := bson.Raw{}
+				err := bson.UnmarshalExtJSON(line.Bytes(), false, &doc)
 				if err != nil {
 					errs <- err
 					return

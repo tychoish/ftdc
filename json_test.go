@@ -214,7 +214,7 @@ func TestCollectJSON(t *testing.T) {
 		assert.Contains(t, err.Error(), "operation aborted")
 	})
 	t.Run("RoundTrip", func(t *testing.T) {
-		inputs := []map[string]interface{}{
+		inputs := []map[string]int64{
 			{
 				"one":   int64(1),
 				"other": int64(43),
@@ -269,10 +269,12 @@ func TestCollectJSON(t *testing.T) {
 			idx++
 
 			s := iter.Document()
-			assert.Equal(t, 2, s.Len())
+			elems, err := s.Elements()
+			require.NoError(t, err)
+			assert.Equal(t, 2, len(elems))
 			for k, v := range inputs[idx] {
 				out := s.Lookup(k)
-				assert.Equal(t, v, out.Interface())
+				assert.Equal(t, v, out.Int64())
 			}
 		}
 		require.NoError(t, iter.Err())
