@@ -20,7 +20,7 @@ type customCollector struct {
 
 type customTest struct {
 	name      string
-	docs      []*bson.Document
+	docs      []bson.Raw
 	numStats  int
 	randStats bool
 	skipBench bool

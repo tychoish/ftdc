@@ -49,7 +49,7 @@ func ReadChunks(ctx context.Context, r io.Reader) *ChunkIterator {
 		pipe:    make(chan *Chunk, 2),
 	}
 
-	ipc := make(chan *bson.Document)
+	ipc := make(chan bson.Raw)
 	ctx, iter.cancel = context.WithCancel(ctx)
 
 	go func() {

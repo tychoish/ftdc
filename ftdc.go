@@ -12,11 +12,11 @@ import (
 type Chunk struct {
 	metrics   []Metric
 	nPoints   int
-	metadata  *bson.Document
-	reference *bson.Document
+	metadata  bson.Raw
+	reference bson.Raw
 }
 
-func (c *Chunk) GetMetadata() *bson.Document {
+func (c *Chunk) GetMetadata() bson.Raw {
 	return c.metadata
 }
 

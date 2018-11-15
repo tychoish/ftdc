@@ -11,42 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestFlattenArray(t *testing.T) {
-	t.Run("NilArray", func(t *testing.T) {
-		out := metricForArray("", nil, nil)
-		assert.NotNil(t, out)
-		assert.Len(t, out, 0)
-	})
-	t.Run("EmptyArray", func(t *testing.T) {
-		out := metricForArray("", nil, bson.NewArray())
-		assert.NotNil(t, out)
-		assert.Len(t, out, 0)
-	})
-	t.Run("TwoElements", func(t *testing.T) {
-		m := metricForArray("foo", nil, bson.NewArray(bson.VC.Boolean(true), bson.VC.Boolean(false)))
-		assert.NotNil(t, m)
-		assert.Len(t, m, 2)
-
-		assert.Equal(t, m[0].Key(), "foo.0")
-		assert.Equal(t, m[1].Key(), "foo.1")
-		assert.Equal(t, int64(1), m[0].startingValue)
-		assert.Equal(t, int64(0), m[1].startingValue)
-	})
-	t.Run("TwoElementsWithSkippedValue", func(t *testing.T) {
-		m := metricForArray("foo", nil, bson.NewArray(bson.VC.String("foo"), bson.VC.Boolean(false)))
-		assert.NotNil(t, m)
-		assert.Len(t, m, 1)
-
-		assert.Equal(t, m[0].Key(), "foo.1")
-		assert.Equal(t, int64(0), m[0].startingValue)
-	})
-	t.Run("ArrayWithOnlyStrings", func(t *testing.T) {
-		out := metricForArray("foo", nil, bson.NewArray(bson.VC.String("foo"), bson.VC.String("bar")))
-		assert.NotNil(t, out)
-		assert.Len(t, out, 0)
-	})
-}
-
 func TestBSONValueToMetric(t *testing.T) {
 	now := time.Now()
 	for _, test := range []struct {

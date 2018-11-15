@@ -11,8 +11,8 @@ import (
 
 type Iterator interface {
 	Next() bool
-	Document() *bson.Document
-	Metadata() *bson.Document
+	Document() bson.Raw
+	Metadata() bson.Raw
 	Err() error
 	Close()
 }
@@ -25,7 +25,7 @@ func ReadMetrics(ctx context.Context, r io.Reader) Iterator {
 		closer:  cancel,
 		chunks:  ReadChunks(iterctx, r),
 		flatten: true,
-		pipe:    make(chan *bson.Document, 100),
+		pipe:    make(chan bson.Raw, 100),
 		catcher: grip.NewBasicCatcher(),
 	}
 	go iter.worker(iterctx)
@@ -42,7 +42,7 @@ func ReadStructuredMetrics(ctx context.Context, r io.Reader) Iterator {
 		closer:  cancel,
 		chunks:  ReadChunks(iterctx, r),
 		flatten: false,
-		pipe:    make(chan *bson.Document, 100),
+		pipe:    make(chan bson.Raw, 100),
 		catcher: grip.NewBasicCatcher(),
 	}
 
@@ -54,9 +54,9 @@ type combinedIterator struct {
 	closer   context.CancelFunc
 	chunks   *ChunkIterator
 	sample   *sampleIterator
-	metadata *bson.Document
-	document *bson.Document
-	pipe     chan *bson.Document
+	metadata bson.Raw
+	document bson.Raw
+	pipe     chan bson.Raw
 	catcher  grip.Catcher
 	flatten  bool
 }
@@ -72,9 +72,9 @@ func (iter *combinedIterator) Close() {
 	}
 }
 
-func (iter *combinedIterator) Err() error               { return iter.catcher.Resolve() }
-func (iter *combinedIterator) Metadata() *bson.Document { return iter.metadata }
-func (iter *combinedIterator) Document() *bson.Document { return iter.document }
+func (iter *combinedIterator) Err() error         { return iter.catcher.Resolve() }
+func (iter *combinedIterator) Metadata() bson.Raw { return iter.metadata }
+func (iter *combinedIterator) Document() bson.Raw { return iter.document }
 
 func (iter *combinedIterator) Next() bool {
 	doc, ok := <-iter.pipe

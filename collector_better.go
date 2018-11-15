@@ -5,12 +5,13 @@ import (
 	"time"
 
 	"github.com/mongodb/mongo-go-driver/bson"
+	"github.com/mongodb/mongo-go-driver/bson/bsoncore"
 	"github.com/pkg/errors"
 )
 
 type betterCollector struct {
-	metadata   *bson.Document
-	reference  *bson.Document
+	metadata   bson.Raw
+	reference  bson.Raw
 	startedAt  time.Time
 	lastSample []int64
 	deltas     []int64
@@ -28,7 +29,7 @@ func NewBaseCollector(maxSize int) Collector {
 	}
 }
 
-func (c *betterCollector) SetMetadata(doc *bson.Document) { c.metadata = doc }
+func (c *betterCollector) SetMetadata(doc bson.Raw) { c.metadata = doc }
 func (c *betterCollector) Reset() {
 	c.reference = nil
 	c.lastSample = nil
@@ -47,7 +48,7 @@ func (c *betterCollector) Info() CollectorInfo {
 	}
 }
 
-func (c *betterCollector) Add(doc *bson.Document) error {
+func (c *betterCollector) Add(doc bson.Raw) error {
 	if c.reference == nil {
 		c.startedAt = time.Now()
 		c.reference = doc
@@ -95,36 +96,30 @@ func (c *betterCollector) Resolve() ([]byte, error) {
 		return nil, errors.WithStack(err)
 	}
 
-	buf := bytes.NewBuffer([]byte{})
+	out := []byte{}
 	if c.metadata != nil {
-		_, err := bson.NewDocument(
-			bson.EC.Time("_id", c.startedAt),
-			bson.EC.Int32("type", 0),
-			bson.EC.SubDocument("doc", c.metadata)).WriteTo(buf)
-		if err != nil {
-			return nil, errors.Wrap(err, "problem writing metadata document")
-		}
+		doc := []byte{}
+		doc = bsoncore.AppendTimeElement(doc, "_id", c.startedAt)
+		doc = bsoncore.AppendInt32Element(doc, "type", 0)
+		doc = bsoncore.AppendDocumentElement(doc, "doc", c.metadata)
+
+		out = bsoncore.BuildDocument(out, doc)
 	}
 
-	_, err = bson.NewDocument(
-		bson.EC.Time("_id", c.startedAt),
-		bson.EC.Int32("type", 1),
-		bson.EC.Binary("data", data)).WriteTo(buf)
-	if err != nil {
-		return nil, errors.Wrap(err, "problem writing metric chunk document")
-	}
+	doc := []byte{}
+	doc = bsoncore.AppendTimeElement(doc, "_id", c.startedAt)
+	doc = bsoncore.AppendInt32Element(doc, "type", 1)
+	doc = bsoncore.AppendDocumentElement(doc, "data", data)
 
-	return buf.Bytes(), nil
+	return bsoncore.BuildDocument(out, doc), nil
 }
 
 func (c *betterCollector) getPayload() ([]byte, error) {
 	payload := bytes.NewBuffer([]byte{})
-	if _, err := c.reference.WriteTo(payload); err != nil {
-		return nil, errors.Wrap(err, "problem writing reference document")
-	}
-
+	payload.Write(c.reference)
 	payload.Write(encodeSizeValue(uint32(len(c.lastSample))))
 	payload.Write(encodeSizeValue(uint32(c.numSamples)))
+
 	zeroCount := int64(0)
 	for i := 0; i < len(c.lastSample); i++ {
 		for j := 0; j < c.numSamples; j++ {

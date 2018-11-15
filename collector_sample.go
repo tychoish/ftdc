@@ -24,7 +24,7 @@ func NewSamplingCollector(minimumInterval time.Duration, collector Collector) Co
 	}
 }
 
-func (c *samplingCollector) Add(d *bson.Document) error {
+func (c *samplingCollector) Add(d bson.Raw) error {
 	if time.Since(c.lastCollection) < c.minimumInterval {
 		return nil
 	}

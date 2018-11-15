@@ -9,10 +9,11 @@ import (
 	"io"
 
 	"github.com/mongodb/mongo-go-driver/bson"
+	"github.com/mongodb/mongo-go-driver/bson/bsoncore"
 	"github.com/pkg/errors"
 )
 
-func readDiagnostic(ctx context.Context, f io.Reader, ch chan<- *bson.Document) error {
+func readDiagnostic(ctx context.Context, f io.Reader, ch chan<- bson.Raw) error {
 	defer close(ch)
 	buf := bufio.NewReader(f)
 	for {
@@ -32,10 +33,10 @@ func readDiagnostic(ctx context.Context, f io.Reader, ch chan<- *bson.Document) 
 	}
 }
 
-func readChunks(ctx context.Context, ch <-chan *bson.Document, o chan<- *Chunk) error {
+func readChunks(ctx context.Context, ch <-chan bson.Raw, o chan<- *Chunk) error {
 	defer close(o)
 
-	var metadata *bson.Document
+	var metadata bson.Raw
 
 	for doc := range ch {
 		// the FTDC streams typically have onetime-per-file
@@ -52,11 +53,11 @@ func readChunks(ctx context.Context, ch <-chan *bson.Document, o chan<- *Chunk) 
 		}
 
 		// get the data field which holds the metrics chunk
-		zelem := doc.LookupElement("data")
-		if zelem == nil {
-			return errors.New("data is not populated")
+		zelem, err := doc.LookupErr("data")
+		if err != nil {
+			return errors.Wrap(err, "data is not populated")
 		}
-		_, zBytes := zelem.Value().Binary()
+		_, zBytes := zelem.Binary()
 
 		// the metrics chunk, after the first 4 bytes, is zlib
 		// compressed, so we make a reader for that. data
@@ -136,21 +137,24 @@ func readChunks(ctx context.Context, ch <-chan *bson.Document, o chan<- *Chunk) 
 	return nil
 }
 
-func readBufBSON(buf *bufio.Reader) (*bson.Document, error) {
-	doc := &bson.Document{}
-
-	if _, err := doc.ReadFrom(buf); err != nil {
+func readBufBSON(buf *bufio.Reader) (bson.Raw, error) {
+	raw, err := bsoncore.NewDocumentFromReader(buf)
+	if err != nil {
 		return nil, err
 	}
 
-	return doc, nil
+	return bson.Raw(raw), nil
 }
 
-func readBufMetrics(buf *bufio.Reader) (*bson.Document, []Metric, error) {
+func readBufMetrics(buf *bufio.Reader) (bson.Raw, []Metric, error) {
 	doc, err := readBufBSON(buf)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "problem reading reference doc")
 	}
+	metrics, err := metricForDocument([]string{}, doc)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "problem reading metrics from doc")
+	}
 
-	return doc, metricForDocument([]string{}, doc), nil
+	return doc, metrics, nil
 }

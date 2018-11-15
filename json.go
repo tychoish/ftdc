@@ -1,3 +1,5 @@
+// +build none
+
 package ftdc
 
 import (
@@ -43,8 +45,8 @@ func (opts CollectJSONOptions) validate() error {
 	return nil
 }
 
-func (opts CollectJSONOptions) getSource() (<-chan *bson.Document, <-chan error) {
-	out := make(chan *bson.Document)
+func (opts CollectJSONOptions) getSource() (<-chan bson.Raw, <-chan error) {
+	out := make(chan bson.Raw)
 	errs := make(chan error)
 
 	switch {

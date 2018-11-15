@@ -45,11 +45,11 @@ func (c *batchCollector) Reset() {
 	c.chunks = []*betterCollector{&betterCollector{maxDeltas: c.maxSamples}}
 }
 
-func (c *batchCollector) SetMetadata(d *bson.Document) {
+func (c *batchCollector) SetMetadata(d bson.Raw) {
 	c.chunks[0].SetMetadata(d)
 }
 
-func (c *batchCollector) Add(d *bson.Document) error {
+func (c *batchCollector) Add(d bson.Raw) error {
 	last := c.chunks[len(c.chunks)-1]
 
 	if last.Info().SampleCount >= c.maxSamples {
